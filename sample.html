@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title> VJ Sample 3 </title>
+  <title> VJ Sample ( canvas only )</title>
 </head>
 
 <body bgcolor="#000" onload="init()">
@@ -10,14 +10,24 @@
   <canvas id="cvs"></canvas>
 
   <script>
-    window.AudioContext = window.webkitAudioContext || window.AudioContext;
+    // Web Audioの初期化
+    window.AudioContext = window.AudioContext;
     var context = new AudioContext();
     var analyser = context.createAnalyser();
+
+    // canvasの初期設定
     var cv = document.getElementById('cvs');
     var ctx = cv.getContext('2d');
+
+    // 変数の定義
+    var cw = window.innerWidth;
+    var ch = window.innerHeight;
+    cv.width = cw;
+    cv.height = ch;
+
     var fftBars = analyser.frequencyBinCount;
-    cv.width = window.innerWidth;
-    cv.height = window.innerHeight;
+
+    // マイクの音声を取得。WebAudioのanalyserにわたしている。
     navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
     navigator.getUserMedia({
         video: false,
@@ -32,6 +42,7 @@
       }
     );
 
+    // 波形を描画
     function drawFFT(fftData) {
       var barW = 1;
       for (var i = 0; i < fftBars; i++) {
@@ -39,14 +50,17 @@
         var hue = i / fftBars * 360;
         ctx.fillStyle = 'rgba(0, 0, 0, 1)';
         ctx.fillStyle = 'hsl(' + hue + ', 100%, 50%)';
-        ctx.fillRect(i * barW, ctx.canvas.height, barW, -amp);
+        ctx.fillRect(i * barW, ctx.canvas.height / 2, barW, -amp);
       }
     }
 
+    // 毎フレーム呼ばれる関数
     function animloop(time) {
       var freqData = new Uint8Array(fftBars);
       analyser.getByteFrequencyData(freqData);
+
       ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
       drawFFT(freqData);
       window.requestAnimationFrame(animloop);
     }
