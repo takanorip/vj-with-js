@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title> Vj Smpl Three.js </title>
+  <style>
+    body {
+      cursor: crosshair;
+      margin: 0px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body onload="setup()">
+  <script src="three.min.js"></script>
+
+  <script>
+    // Web Audio　の初期化
+    window.AudioContext = window.AudioContext;
+    var context = new AudioContext();
+    var analyser = context.createAnalyser();
+
+    // three.jsで使う変数
+    var scene = null;
+    var camera = null;
+    var renderer = null;
+
+    var radius = 500;
+    var angle = 0;
+    var plane = null;
+
+    // マイクの音声を取得。　WebAudioのanalyserにわたしている。
+    navigator.getUserMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
+    navigator.getUserMedia({
+        video: false,
+        audio: true
+      },
+      function(stream) {
+        var microphone = context.createMediaStreamSource(stream);
+        microphone.connect(analyser);
+      },
+      function(error) {
+        return;
+      }
+    );
+
+    // 画面のリサイズ
+    function resize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // three.js のカメラとかオブジェクトとかモロモロ初期化
+    function three_init() {
+      // まずシーンをつくります。
+      scene = new THREE.Scene();
+      // 次にカメラをつくります。
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+      // カメラをシーンに追加。
+      scene.add(camera);
+      // カメラ位置を設定
+      camera.position.z = radius;
+      // レンダラーをDOM上に設置する
+      renderer = new THREE.WebGLRenderer({
+        antialias: true
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      // 背景の色
+      renderer.setClearColor(0x000000);
+
+      // 平面を生成
+      three_plane_init();
+    }
+
+    // 平面オブジェクト生成してsceneに　add
+    function three_plane_init() {
+      // 平面のマテリアルを設定
+      // var mat = new THREE.MeshBasicMaterial({
+      //   color: 0xffff00
+      //   // wireframe: true
+      // });
+      var mat = new THREE.MeshNormalMaterial();
+      // サイズとグリッドを設定して形状を決める
+      var geo = new THREE.SphereGeometry(300, 20, 20);
+      // マテリアルと形状をもとに物体を生成します
+      plane = new THREE.Mesh(geo, mat);
+
+      // 水平面になるように90度回転
+      plane.rotation.set(Math.PI / 2, 0, 0);
+
+      // 平面をシーンに追加
+      scene.add(plane);
+    }
+
+    // Web MIDI　API　の初期化
+    function web_midi_init() {
+      navigator.requestMIDIAccess({
+        sysex: false
+      }).then(success, failure);
+    }
+
+    // Web MIDIの初期化が失敗したときに呼ばれる関数
+    function failure(error) {}
+
+    // Web MIDIの初期化が成功したときに呼ばれる関数
+    function success(m) {
+      var inputs = null;
+      var midi = m;
+
+      if (typeof midi.inputs === "function") {
+        inputs = midi.inputs();
+      } else {
+        var inputIterator = midi.inputs.values();
+        inputs = [];
+        for (var o = inputIterator.next(); !o.done; o = inputIterator.next()) {
+          inputs.push(o.value)
+        }
+      }
+      // 全てのMIDI機器の入力を受ける
+      for (var i = 0; i < inputs.length; i++) {
+        inputs[i].onmidimessage = handleMIDIMessage;
+      }
+    }
+
+    // Web MIDI 入力のコールバック関数
+    // CCを受けたらカメラのangleが変化するように実装。
+    function handleMIDIMessage(ev) {
+      switch (ev.data[0] & 0xF0) {
+        case 0x90: // Note On
+          break;
+        case 0x80: // Note Off
+          break;
+        case 0xB0: // CC
+          // MIDI 0-127の値を0-2PIに変換
+          angle = 2 * Math.PI * ev.data[2] / 127;
+          break;
+        default:
+          break;
+      }
+    }
+
+    // カメラのアングル設定
+    function camera_update() {
+      // カメラ位置を設定
+      camera.position.x = radius * Math.cos(angle);
+      camera.position.y = 200;
+      camera.position.z = radius * Math.sin(angle);
+
+      // 常に原点を向くように
+      camera.lookAt(new THREE.Vector3(0, 0, 0));
+    }
+
+    // 平面に波形の揺らぎを付加
+    function plane_update(waveData) {
+      // updateのフラグを立てる
+      plane.geometry.verticesNeedUpdate = true;
+
+      // WebAudio AnalyzerNodeから取得したデータで平面のz座標を動かす
+      for (var i = 0; i < plane.geometry.vertices.length; i++) {
+        var vertex = plane.geometry.vertices[i];
+        vertex.z = waveData[i % waveData.length] * 500;
+      }
+
+    }
+
+    // 初期化
+    function setup(e) {
+      three_init();
+      web_midi_init();
+      window.addEventListener("resize", resize, false);
+      draw();
+    }
+
+    // 毎フレーム呼ばれる関数
+    function draw() {
+      // 波形情報を取得
+      var waveData = new Float32Array(analyser.frequencyBinCount);
+      analyser.getFloatTimeDomainData(waveData);
+
+      // カメラ位置をアップデート
+      camera_update();
+      // 平面をアップデート
+      plane_update(waveData);
+
+      // レンダリングされる
+      renderer.render(scene, camera);
+
+      window.requestAnimationFrame(draw);
+    }
+  </script>
+</body>
+
+</html>
